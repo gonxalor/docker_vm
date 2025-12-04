@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # 1. MQTT Broker
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: mosquitto_broker
+    ports:
+      # Expose standard MQTT port to the host
+      - "1883:1883" 
+      - "9001:9001"
+    volumes:
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  # 2. Client Service A: dialog_manager
+  # This builds the image from the Dockerfile in the current directory (context: .)
+  dialog-manager:
+    build:
+      context: .
+    container_name: dialog_manager_client
+    # Runs dialog_manager.py
+    command: python dialog_manager.py
+    # Must wait for the broker to be available
+    depends_on:
+      - mosquitto
+    environment:
+      # IMPORTANT: Use the service name 'mosquitto' instead of localhost
+      - MQTT_BROKER=mosquitto 
+      - MQTT_PORT=1883
+      - USERNAME=inesc
+      - PASSWORD=inesc
+    #restart: unless-stopped
+
+  # 3. Client Service B: text2speech2text
+  # This uses the EXACT SAME IMAGE as dialog-manager
+  text2speech2text:
+    build:
+      context: .
+    container_name: tts_client
+    # Runs text2speech2text.py, allowing you to run it in a separate terminal/container
+    command: python text2speech2text.py
+    volumes:
+      - /mnt/wslg:/mnt/wslg
+      - /run/user/1000/pulse:/run/pulse
+    depends_on:
+      - mosquitto
+    environment:
+      # IMPORTANT: Use the service name 'mosquitto' instead of localhost
+      - MQTT_BROKER=mosquitto 
+      - MQTT_PORT=1883
+      - USERNAME=inesc
+      - PASSWORD=inesc
+      - PULSE_SERVER=unix:/mnt/wslg/PulseServer
+      - PULSE_COOKIE=/run/pulse/cookie
+    # You might need to add ports here if your text2speech2text service 
+    # needs to expose any API for audio control, but likely not.
+    #restart: unless-stopped
+    user: "1000:29" 
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:

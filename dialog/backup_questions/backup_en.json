@@ -1,0 +1,13 @@
+{
+    "questions": {
+        "consciousness": "Hi, I'm a rescue robot. I'm here to help you. Are you hurt?",
+        "injuries": "Can you describe the type of injuries you have?",
+        "breathing": "Are you experiencing difficulty breathing?",
+        "stuck_trapped": "Are you stuck somewhere?",
+        "can_walk": "Can you walk and come with me?",
+        "people_in_surroundings": "Are there other victims inside the building?",
+        "immediate_danger": "Do you see any danger nearby? Please answer with yes or no.",
+        "robot_action": ["Stay here and wait. Emergency responders know you're here and are on their way.",
+                     "Come with me, I'll guide you to the exit for your safety."]
+    }
+}        

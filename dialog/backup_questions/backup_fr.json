@@ -1,0 +1,15 @@
+{
+    "questions": {
+        "consciousness": "Bonjour, je suis un robot de sauvetage. Je suis là pour vous aider. Êtes-vous blessé ?",
+        "injuries": "Pouvez-vous décrire le type de blessures que vous avez ?",
+        "breathing": "Avez-vous des difficultés à respirer ?",
+        "stuck_trapped": "Êtes-vous coincé quelque part ?",
+        "can_walk": "Pouvez-vous marcher et venir avec moi ?",
+        "people_in_surroundings": "Y a-t-il d'autres victimes à l'intérieur du bâtiment ?",
+        "immediate_danger": "Voyez-vous un danger à proximité ? Veuillez répondre par oui ou par non.",
+        "robot_action": [
+            "Restez ici et attendez. Les équipes de secours savent que vous êtes là et sont en route.",
+            "Venez avec moi, je vais vous guider vers la sortie pour votre sécurité."
+        ]
+    }
+}
