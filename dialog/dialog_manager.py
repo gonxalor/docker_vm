@@ -308,12 +308,12 @@ async def main():
         print("⚙️ Starting Backup and Rescue systems simultaneously...")
 
         
-        json_object = mqtt_client.cc_queue.get()
-        situation_context = json_object["data"]["context"]
-        print(f"[Dialog Manager] Context received: {context_situation[situation_context]}")
+        #json_object = mqtt_client.cc_queue.get()
+        #situation_context = json_object["data"]["context"]
+        context = context_situation["ImminentCollapse"]
 
-        context = context_situation[situation_context]
 
+        print(f"[Dialog Manager] Context received: {context}")
         report_queue = asyncio.Queue()
         loop = asyncio.get_running_loop()
 

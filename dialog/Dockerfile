@@ -1,7 +1,7 @@
 FROM python:3.12.0
 
 # Install system dependencies including espeak-ng, audio libraries, and PulseAudio
-RUN apt-get update && apt-get install -y \
+RUN apt-get update -o Acquire::Check-Valid-Until=false && apt-get install -y \
     gcc \
     espeak-ng \
     espeak-ng-data \

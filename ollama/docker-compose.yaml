@@ -1,0 +1,19 @@
+services:
+  ollama:
+    build:
+      context: .
+    container_name: ollama_server
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  ollama-data:
+
+networks:
+  app-network:
+    external: true
