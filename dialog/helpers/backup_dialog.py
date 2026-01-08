@@ -11,10 +11,10 @@ from datetime import datetime, timezone
 
 
 #BROKER = "mqtt01.carma"
-BROKER = "localhost"
-PORT = 1883
-USERNAME = "inesc"
-PASSWORD = "inesc"
+BROKER = os.getenv('MQTT_BROKER', 'mosquitto')
+PORT = int(os.getenv('MQTT_PORT', 1883))
+USERNAME = os.getenv('USERNAME', 'inesc')
+PASSWORD = os.getenv('PASSWORD', 'inesc')
 
 class BackupInteraction:
 
@@ -237,7 +237,7 @@ class BackupInteraction:
 
     def read_question_file(self):
         # Check if the file exists before attempting to open it
-        file_path = f"../Carma-Dialog/backup_questions/backup_{self.language}.json"
+        file_path = f"../backup_questions/backup_{self.language}.json"
         if not os.path.exists(file_path):
             print(f"[ERROR] File not found: {file_path}")
             return

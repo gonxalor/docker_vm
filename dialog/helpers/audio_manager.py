@@ -9,6 +9,7 @@ import platform
 import pyttsx3
 import threading
 import torch
+import subprocess
 
 
 class AudioManager:
@@ -243,31 +244,36 @@ class AudioManager:
         return ""
     
     def text_to_speech(self, text: str, blocking: bool = True):
-        """
-        Convert text to speech using offline TTS
+        # Ensure text is not empty
+        if not text or not text.strip():
+            return
+
+        # Map the language codes to the actual filenames
+        voice_map = {
+            "en": "en_US-lessac-medium.onnx",
+            "es": "es_ES-sharvard-medium.onnx",
+            "fr": "fr_FR-siwis-medium.onnx"
+        }
         
-        Args:
-            text: Text to convert to speech
-            blocking: Whether to wait for speech to complete
-        """
+        model_file = voice_map.get(self.language, "en_US-lessac-medium.onnx")
+        model_path = f"/models/{model_file}"
+        
+        # We use aplay to play the raw audio stream coming out of Piper
+        # -r 22050 is required for 'medium' models.
+        # Note: Using double quotes around text to handle single quotes in speech
+        safe_text = text.replace('"', '\\"')
+        command = f'echo "{safe_text}" | piper --model {model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
+        
         try:
             if blocking:
-                self.tts_engine.say(text)
-                self.tts_engine.runAndWait()
+                subprocess.run(command, shell=True, check=True)
             else:
-                def speak_async():
-                    self.tts_engine.say(text)
-                    self.tts_engine.runAndWait()
-                
-                speech_thread = threading.Thread(target=speak_async)
-                speech_thread.daemon = True
-                speech_thread.start()
-    
-            
+                subprocess.Popen(command, shell=True)
         except Exception as e:
-            print(f"TTS Error: {e}")
-            print(f"Robot says (text only): {text}")
+            print(f"Offline TTS Error: {e}")
+            print(f"Robot says: {text}")
 
+            
     def test_audio_systems(self):
         """Test both TTS and STT systems offline"""
         print("\n=== TESTING OFFLINE AUDIO SYSTEMS ===")

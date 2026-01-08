@@ -47,11 +47,14 @@ services:
       - MQTT_PORT=1883
       - USERNAME=inesc
       - PASSWORD=inesc
-    devices:
-      - /dev/snd:/dev/snd  # This is all you need for ALSA
-    group_add:
-      - audio
-    user: "1000:29"  # Adjust 29 to your audio group ID
+      # Tell the app to use the PulseAudio socket
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
+      - PULSE_COOKIE=/run/user/1000/pulse/cookie
+    volumes:
+      - /run/user/1000/pulse/native:/run/user/1000/pulse/native
+      - ${HOME}/.config/pulse/cookie:/root/.pulse-cookie
+    # We remove 'devices' and 'group_add' because PulseAudio handles the hardware
+    user: "1000"
     networks:
       - app-network
 
