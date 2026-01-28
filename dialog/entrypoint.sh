@@ -1,16 +1,11 @@
 #!/bin/bash
 
-# Start Mosquitto in the background using your config file
-# We run it with -d to daemonize it
-echo "Starting Mosquitto Broker with custom config..."
+# Start Mosquitto
 mosquitto -c /mosquitto/config/mosquitto.conf -d
-
-# Give Mosquitto a second to bind to the port
 sleep 1
 
-# Start Dialog Manager in the background
-python dialog_manager.py & 
+# Start Dialog Manager with optional args from $DIALOG_PARAMS
+python dialog_manager.py ${PARAMS} & 
 
-exec python -u text2speech2text.py 2>/dev/null
-#python text2speech2text.py 
-# Start User Interface in the foreground
+# Start T2S2T with optional args from $TTS_PARAMS
+exec python -u text2speech2text.py ${PARAMS} 2>/dev/null

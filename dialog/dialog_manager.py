@@ -21,6 +21,7 @@ from helpers.backup_dialog import BackupInteraction
 
 #BROKER = "mqtt01.carma"  # replace with broker IP
 BROKER = os.getenv('MQTT_BROKER', 'mosquitto')
+#BROKER = os.getenv('MQTT_BROKER', 'localhost')
 PORT = int(os.getenv('MQTT_PORT', 1883))
 USERNAME = os.getenv('USERNAME', 'inesc')
 PASSWORD = os.getenv('PASSWORD', 'inesc')
@@ -221,10 +222,10 @@ def send_status_report(mqtt_client,msg):
     result = mqtt_client.dm_client.publish(topic, json_msg, retain=True)
     result.wait_for_publish()   # ✅ wait until actually sent
    
-async def run_backup_interaction(mqtt_client,report_queue,language):
+async def run_backup_interaction(mqtt_client,report_queue,language,robotname):
     print("--------------------------entering backup interaction-----------------------------")
     try:
-        robot_system = BackupInteraction(language=language)
+        robot_system = BackupInteraction(robotname,language=language)
         mqtt_client.victim_id = await robot_system.interaction_tree(queue=report_queue)
         send_status_report(mqtt_client, robot_system.victim_situation)
         await asyncio.sleep(0.5)
@@ -291,6 +292,9 @@ async def run_rescue_robot(mqtt_client, args, context,report_queue,loop,cancel_e
 
 
 async def main():
+    parser = setup_argument_parser()
+    args = parser.parse_args()
+    
     mqtt_client = MqttClient()
 
     context_situation = {
@@ -298,9 +302,6 @@ async def main():
         "FireClosingBy": "There is a fire close by.",
         "NoImmediateDanger": "There is no immediate danger",
     }
-
-    parser = setup_argument_parser()
-    args = parser.parse_args()
 
 
     try:
@@ -321,7 +322,7 @@ async def main():
         # Run both tasks *at the same time*
         await asyncio.gather(
             run_rescue_robot(mqtt_client, args, context,report_queue,loop,cancel_event),
-            run_backup_interaction(mqtt_client,report_queue,args.language),
+            run_backup_interaction(mqtt_client,report_queue,args.language,args.robotname),
         )
 
         print("\n✅ Both systems completed execution successfully.")

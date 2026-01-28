@@ -49,6 +49,7 @@ class ConversationConfig:
     max_turns: int = 10
     max_retries: int = 3
     test_audio_on_start: bool = False
+    robot_name: str = "TEC800"
 
 
 class ConfigManager:
@@ -81,7 +82,9 @@ class ConfigManager:
                 config.audio_config.whisper_model = args.whisper_model
             if hasattr(args, 'test_audio'):
                 config.conversation_config.test_audio_on_start = args.test_audio
-             
+            if hasattr(args, 'robotname'):
+                config.conversation_config.robot_name = args.robotname
+                 
             # Update model config from args
             if hasattr(args, 'model'):
                 config.model_config.model_name = args.model
@@ -176,6 +179,13 @@ Examples:
         choices=['low', 'medium', 'high'], 
         default='medium',
         help='Empathy level affecting robot speech speed (default: medium)'
+    )
+
+    parser.add_argument(
+        "-rn", "--robotname",
+        type=str,
+        default="TEC800",
+        help="Language used for the text-to-speech and speech-to-text (default: english)"
     )
 
     # Audio configuration

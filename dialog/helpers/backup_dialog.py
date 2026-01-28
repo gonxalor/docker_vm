@@ -12,13 +12,14 @@ from datetime import datetime, timezone
 
 #BROKER = "mqtt01.carma"
 BROKER = os.getenv('MQTT_BROKER', 'mosquitto')
+#BROKER = os.getenv('MQTT_BROKER', 'localhost')
 PORT = int(os.getenv('MQTT_PORT', 1883))
 USERNAME = os.getenv('USERNAME', 'inesc')
 PASSWORD = os.getenv('PASSWORD', 'inesc')
 
 class BackupInteraction:
 
-    def __init__(self,language='en'):
+    def __init__(self,robotname,language='en'):
 
         self.alternative_questions = {} #Change this with the questions and answers of the json file
 
@@ -47,11 +48,12 @@ class BackupInteraction:
 
         self.occupied_nodes = []
         self.language=language
+        self.robotname=robotname
 
         # Queue to receive STT responses from speech module
         self.stt_queue = Queue()
 
-        self.dialog_client = mqtt.Client()
+        self.dialog_client = mqtt.Client(userdata=self.robotname)
         self.dialog_client.will_set("victim/dialogmanager2/lwt", "offline")
         self.dialog_client.on_connect = self.on_connect
         self.dialog_client.on_message = self.on_stt_message
@@ -65,9 +67,8 @@ class BackupInteraction:
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             print(colored("✅ Connected to broker","yellow"))
-            self.dialog_client.subscribe("victim/text2speech2text/stt")
-            self.dialog_client.subscribe("victim/text2speech2text/lwt")
-            self.dialog_client.subscribe("victim/controlcenter/victim_id")            
+            self.dialog_client.subscribe(f"victim/text2speech2text/stt-{userdata}")
+            self.dialog_client.subscribe("victim/text2speech2text/lwt")         
             self.dialog_client.publish("victim/dialogmanager2/lwt", "online")
         else:
                 print(colored("❌ Bad connection. Returned code=","yellow"), rc)    
@@ -80,13 +81,7 @@ class BackupInteraction:
         if msg.payload.decode() != "":
             msg_topic = msg.topic
             if msg_topic == "victim/text2speech2text/lwt":
-                print(colored(f"Text2speech2Text status update: {msg.payload.decode()}","yellow"))
-            elif msg_topic == "victim/controlcenter/victim_id":
-                loaded_msg = json.loads(msg.payload.decode())
-                data = loaded_msg["data"]
-                victim_id = data["victim_id"]
-                self.victim_id = victim_id
-                self.dialog_client.subscribe(f"victim/text2speech2text/stt-{self.victim_id}")          
+                print(colored(f"Text2speech2Text status update: {msg.payload.decode()}","yellow"))         
             elif not self.in_background:    
                 response = json.loads(msg.payload.decode())
                 data = response["data"]
@@ -99,7 +94,7 @@ class BackupInteraction:
 
                 if self.first_message:
                     self.first_message = False
-                    self.dialog_client.publish(f"victim/text2speech2text/stt-{self.victim_id}",payload="", qos=1, retain=True) 
+                    self.dialog_client.publish(f"victim/text2speech2text/stt-{userdata}",payload="", qos=1, retain=True) 
 
     # -----------------------
     # Helper Functions
@@ -113,7 +108,7 @@ class BackupInteraction:
                 "msg_id": str(uuid.uuid4()),
                 "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "msg_type": "UGV's message",
-                "msg_content": f"victim/text2speech2text/tts-{self.victim_id}"},
+                "msg_content": f"victim/text2speech2text/tts-{self.robotname}"},
             "data":{
                 "message": text,
                 "victim_id": self.victim_id,
@@ -122,7 +117,7 @@ class BackupInteraction:
         }
 
         json_msg = json.dumps(json_msg)
-        self.dialog_client.publish(f"victim/text2speech2text/tts-{self.victim_id}", str(json_msg))
+        self.dialog_client.publish(f"victim/text2speech2text/tts-{self.robotname}", str(json_msg))
 
     def listen(self,timeout=30):
         """Wait for STT response from the speech module."""

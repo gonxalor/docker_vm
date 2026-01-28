@@ -102,6 +102,7 @@ class PhaseController:
         report_queue,
         loop,
         event,
+        robotname,
         victim_agent: Optional[VictimAgent] = None,
         mqtt_manager: Optional['MQTTManager'] = None,
         verbose: bool = True,
@@ -134,6 +135,7 @@ class PhaseController:
         self.report_queue = report_queue
         self.loop = loop
         self.event = event
+        self.robotname = robotname
         
         # State tracking
         self.current_phase = None  # 1, 2, or None
@@ -155,8 +157,7 @@ class PhaseController:
 
         if not self.local:
             self.stt_queue = Queue()
-            self.id_queue = Queue()
-            self.dialog_client = mqtt.Client()
+            self.dialog_client = mqtt.Client(userdata=self.robotname)
             self.dialog_client.will_set("victim/dialogmanager2/lwt", "offline")
             self.dialog_client.on_connect = self.on_connect
             self.dialog_client.on_message = self.on_stt_message
@@ -170,8 +171,8 @@ class PhaseController:
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             print("✅ Connected to broker")
-            self.dialog_client.subscribe("victim/controlcenter/victim_id")
-            self.dialog_client.subscribe("victim/text2speech2text/lwt")            
+            self.dialog_client.subscribe("victim/text2speech2text/lwt")
+            self.dialog_client.subscribe(f"victim/text2speech2text/stt-{userdata}")                
             self.dialog_client.publish("victim/dialogmanager2/lwt", "online")
         else:
             print("❌ Bad connection. Returned code=", rc)    
@@ -181,24 +182,18 @@ class PhaseController:
         if msg.payload.decode() != "":
             msg_topic = msg.topic
             if msg_topic == "victim/text2speech2text/lwt":
-                print(f"Text2speech2Text status update: {msg.payload.decode()}")
-            elif msg_topic == "victim/controlcenter/victim_id":
-                loaded_msg = json.loads(msg.payload.decode())
-                data = loaded_msg["data"]
-                victim_id = data["victim_id"]
-                self.victim_id = victim_id
-                self.dialog_client.subscribe(f"victim/text2speech2text/stt-{self.victim_id}")            
+                print(f"Text2speech2Text status update: {msg.payload.decode()}")         
             else:    
                 response = json.loads(msg.payload.decode())
                 data = response["data"]
-                #message = data["message"]
+                self.victim_id = data["victim_id"]
                 #print(f"VICTIM: {message}")
 
                 self.stt_queue.put(data)
 
                 if self.first_message:
                     self.first_message = False
-                    self.dialog_client.publish(f"victim/text2speech2text/stt-{self.victim_id}", payload="", qos=1, retain=True)        
+                    self.dialog_client.publish(f"victim/text2speech2text/stt-{userdata}", payload="", qos=1, retain=True)        
     
     def change_to_backup_system(self,victim_response):
         if self.loop is not None:
@@ -368,7 +363,7 @@ class PhaseController:
                     "msg_id": str(uuid.uuid4()),
                     "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "msg_type": "UGV's message",
-                    "msg_content": f"victim/text2speech2text/tts-{self.victim_id}"},
+                    "msg_content": f"victim/text2speech2text/tts-{self.robotname}"},
             "data":{
                 "message": question,
                 "victim_id": self.victim_id,
@@ -378,7 +373,7 @@ class PhaseController:
         json_msg["data"]["last_message"] = False
         json_msg = json.dumps(json_msg)
 
-        self.dialog_client.publish(f"victim/text2speech2text/tts-{self.victim_id}",str(json_msg))   
+        self.dialog_client.publish(f"victim/text2speech2text/tts-{self.robotname}",str(json_msg))   
     
     def execute_phase_1(self, max_turns: int = 15) -> Dict:
         """
@@ -669,7 +664,7 @@ class PhaseController:
                                     "msg_id": str(uuid.uuid4()),
                                     "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                                     "msg_type": "UGV's message",
-                                    "msg_content": f"victim/text2speech2text/tts-{self.victim_id}"},
+                                    "msg_content": f"victim/text2speech2text/tts-{self.robotname}"},
                             "data":{
                                 "message": retry_message,
                                 "victim_id": self.victim_id,
@@ -678,7 +673,7 @@ class PhaseController:
                         }
                         json_msg = json.dumps(json_msg)
 
-                        self.dialog_client.publish(f"victim/text2speech2text/tts-{self.victim_id}",str(json_msg))
+                        self.dialog_client.publish(f"victim/text2speech2text/tts-{self.robotname}",str(json_msg))
                         time.sleep(1)
                             
             # Production mode - would get from audio/text input

@@ -89,8 +89,9 @@ class RescueRobotSystem:
                 report_queue=report_queue,
                 loop=loop,
                 event=event,
+                robotname=self.config.conversation_config.robot_name,
                 verbose=True, # Enable verbose output for debugging
-                local=self.local, 
+                local=self.local,
             )
             self.conversation_manager = None
         else:

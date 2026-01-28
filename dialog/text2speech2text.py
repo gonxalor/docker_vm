@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 # ---------------- MQTT CONFIG ---------------- #
 #BROKER = "mqtt01.carma"  # replace with broker IP
 BROKER = os.getenv('MQTT_BROKER', 'mosquitto')
+#BROKER = os.getenv('MQTT_BROKER', 'localhost')
 PORT = int(os.getenv('MQTT_PORT', 1883))
 USERNAME = os.getenv('USERNAME', 'inesc')
 PASSWORD = os.getenv('PASSWORD', 'inesc')
@@ -50,17 +51,21 @@ def parse_args():
         default="en",
         help="Language used for the text-to-speech and speech-to-text (default: english)"
     )
+    parser.add_argument(
+        "-rn", "--robotname",
+        default="TEC800",
+        help="Language used for the text-to-speech and speech-to-text (default: english)"
+    )
     return parser.parse_args()
 
 # ------------------ Queues ------------------ #
 tts_queue = queue.Queue()
-id_queue = queue.Queue()
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("✅ Connected to broker")
         # Subscribe to TTS topic
-        speech_client.subscribe("victim/controlcenter/victim_id")
+        speech_client.subscribe(f"victim/text2speech2text/tts-{userdata}")
         speech_client.subscribe("victim/dialogmanager2/lwt")
         speech_client.publish("victim/text2speech2text/lwt", "online")    
     else:
@@ -72,15 +77,6 @@ def on_tts_message(client, userdata, msg):
     msg_topic = msg.topic
     if msg_topic == "victim/dialogmanager2/lwt":
         print(f"Dialog Manager status update: {msg.payload.decode()}")
-    elif msg_topic == "victim/controlcenter/victim_id":
-        loaded_msg = json.loads(msg.payload.decode())
-        data = loaded_msg["data"]
-        victim_id = data["victim_id"]
-        print("+++++++++++++++++++++++++++++++++++++++++++++++")
-        print("This is the victimid: ",victim_id) 
-        print("+++++++++++++++++++++++++++++++++++++++++++++++")
-        id_queue.put(victim_id)
-        speech_client.subscribe(f"victim/text2speech2text/tts-{victim_id}")
     else:
         try:
             loaded_msg = json.loads(msg.payload.decode())
@@ -91,35 +87,20 @@ def on_tts_message(client, userdata, msg):
         except Exception as e:
             print(f"Error in MQTT callback: {e}")
 
-def notify_control_center(speech_client):
-    json_msg = {
-        "header": {
-            "sender": "speechModule",
-            "msg_id": str(uuid.uuid4()),
-            "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "msg_type": "Creation",
-            "msg_content": "victim/dialogmanager/report"
-        },
-        "data": {
-            "victim_id": False,
-            "message": None,
-        }
-    }
-    print("message sent to the control center")
-    speech_client.publish("victim/dialogmanager/report", json.dumps(json_msg), retain=True)            
 
 # ------------------ MAIN SCRIPT ------------------ #
 if __name__ == "__main__":
     args = parse_args()
     whisper_model = args.model
     language = args.language
+    robotname = args.robotname
     print(f"[Speech Module] Using Whisper model: {whisper_model}")
 
     # Initialize AudioManager (loads Whisper model, configures TTS & recording)
     audio_manager = AudioManager(whisper_model=whisper_model,language=language)
 
     # Initialize MQTT client
-    speech_client = mqtt.Client()
+    speech_client = mqtt.Client(userdata=robotname)
     speech_client.will_set("victim/text2speech2text/lwt", "offline")
     speech_client.on_connect = on_connect
     speech_client.on_message = on_tts_message
@@ -141,22 +122,21 @@ if __name__ == "__main__":
             new_msg = audio_manager.speech_to_text(max_duration=8)
             if keyword in new_msg.lower():
                 # Prepare JSON message and publish STT result
-                notify_control_center(speech_client)
-                victim_id = id_queue.get()
+                victim_id = str(uuid.uuid4())
                 json_msg = {
                     "header": {
                         "sender": "speechModule",
                         "msg_id": str(uuid.uuid4()),
                         "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                         "msg_type": "Victim's message",
-                        "msg_content": f"victim/text2speech2text/stt-{victim_id}"
+                        "msg_content": f"victim/text2speech2text/stt-{robotname}"
                     },
                     "data": {
                         "victim_id": victim_id,
                         "message": new_msg,
                     }
                 }
-                speech_client.publish(f"victim/text2speech2text/stt-{victim_id}", json.dumps(json_msg), retain=True)
+                speech_client.publish(f"victim/text2speech2text/stt-{robotname}", json.dumps(json_msg), retain=True)
                 print(f"\nVICTIM: {new_msg}")
                 break
         
@@ -171,7 +151,7 @@ if __name__ == "__main__":
                 # Speak the message (blocking is OK in main thread)
                 audio_manager.text_to_speech(tts_text, blocking=True)
 
-                
+                print("THIS IS THE ROBOTNAME: ", robotname)
                 if not last_message:
                     # After speaking, record speech from user
 
@@ -186,7 +166,7 @@ if __name__ == "__main__":
                             "msg_id": str(uuid.uuid4()),
                             "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                             "msg_type": "Victim's message",
-                            "msg_content": f"victim/text2speech2text/stt-{victim_id}"
+                            "msg_content": f"victim/text2speech2text/stt-{robotname}"
                         },
                         "data": {
                             "victim_id": victim_id,
@@ -195,7 +175,7 @@ if __name__ == "__main__":
 
                         }
                     }
-                    speech_client.publish(f"victim/text2speech2text/stt-{victim_id}", json.dumps(json_msg))
+                    speech_client.publish(f"victim/text2speech2text/stt-{robotname}", json.dumps(json_msg))
                     print(f"\nVICTIM: {new_msg}")
                 else:
                     break    
