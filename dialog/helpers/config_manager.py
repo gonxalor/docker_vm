@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any
 import os
 import argparse
 
-OLLAMA_URL = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
+OLLAMA_URL = os.getenv('OLLAMA_HOST', 'http://ollama_server:11434')
 
 @dataclass
 class AudioConfig:
@@ -26,7 +26,7 @@ class AudioConfig:
 @dataclass
 class ModelConfig:
     """Configuration for AI models"""
-    model_name: str = "llama3.1:8b"
+    model_name: str = "gemma3:12b"
     ollama_base_url: str = OLLAMA_URL
     dialogue_prompt_path: str = "prompts/dialogue_prompt.txt"
     assessment_prompt_path: str = "prompts/assessment_prompt.txt"
@@ -206,7 +206,7 @@ Examples:
         '--model', '-m',
         type=str,
         choices=['backup','llama3.1:8b','gemma3:4b','gemma:7b','gemma3:12b', 'gpt-oss:7b', 'gpt-oss:13b', 'gpt-oss:20b'],
-        default='llama3.1:8b',
+        default='gemma3:12b',
         help='Ollama model name (default: llama3.1:8b)'
     )
     

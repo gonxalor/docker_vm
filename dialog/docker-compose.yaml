@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  dialog-manager:
+    build:
+      context: .
+    container_name: t2s2t
+    # Port 1883 is now exposed by this container
+    ports:
+      - "1883:1883"
+    environment:
+      - MQTT_BROKER=localhost 
+      - MQTT_PORT=1883
+      - USERNAME=inesc
+      - PASSWORD=inesc
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
+      - XDG_CACHE_HOME=/home/user/.cache
+    volumes:
+      # Audio/Pulse Volumes
+      - /run/user/1000/pulse/native:/run/user/1000/pulse/native
+      - ${HOME}/.config/pulse/cookie:/tmp/pulse-cookie
+      # Whisper Cache Bind Mount (To prevent re-downloading)
+      - ./whisper_models:/home/user/.cache/whisper
+      # Mosquitto Persistence (Moved from the old service)
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    user: "1000"
+    networks:
+      - app-network
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+
+networks:
+  app-network:
+    external: true

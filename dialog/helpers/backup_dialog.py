@@ -66,7 +66,8 @@ class BackupInteraction:
         if rc == 0:
             print(colored("✅ Connected to broker","yellow"))
             self.dialog_client.subscribe("victim/text2speech2text/stt")
-            self.dialog_client.subscribe("victim/text2speech2text/lwt")            
+            self.dialog_client.subscribe("victim/text2speech2text/lwt")
+            self.dialog_client.subscribe("victim/controlcenter/victim_id")            
             self.dialog_client.publish("victim/dialogmanager2/lwt", "online")
         else:
                 print(colored("❌ Bad connection. Returned code=","yellow"), rc)    
@@ -80,6 +81,12 @@ class BackupInteraction:
             msg_topic = msg.topic
             if msg_topic == "victim/text2speech2text/lwt":
                 print(colored(f"Text2speech2Text status update: {msg.payload.decode()}","yellow"))
+            elif msg_topic == "victim/controlcenter/victim_id":
+                loaded_msg = json.loads(msg.payload.decode())
+                data = loaded_msg["data"]
+                victim_id = data["victim_id"]
+                self.victim_id = victim_id
+                self.dialog_client.subscribe(f"victim/text2speech2text/stt-{self.victim_id}")          
             elif not self.in_background:    
                 response = json.loads(msg.payload.decode())
                 data = response["data"]
@@ -92,7 +99,7 @@ class BackupInteraction:
 
                 if self.first_message:
                     self.first_message = False
-                    self.dialog_client.publish("victim/text2speech2text/stt", payload="", qos=1, retain=True) 
+                    self.dialog_client.publish(f"victim/text2speech2text/stt-{self.victim_id}",payload="", qos=1, retain=True) 
 
     # -----------------------
     # Helper Functions
@@ -106,7 +113,7 @@ class BackupInteraction:
                 "msg_id": str(uuid.uuid4()),
                 "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "msg_type": "UGV's message",
-                "msg_content": "victim/text2speech2text/tts"},
+                "msg_content": f"victim/text2speech2text/tts-{self.victim_id}"},
             "data":{
                 "message": text,
                 "victim_id": self.victim_id,
@@ -115,7 +122,7 @@ class BackupInteraction:
         }
 
         json_msg = json.dumps(json_msg)
-        self.dialog_client.publish("victim/text2speech2text/tts", str(json_msg))
+        self.dialog_client.publish(f"victim/text2speech2text/tts-{self.victim_id}", str(json_msg))
 
     def listen(self,timeout=30):
         """Wait for STT response from the speech module."""
@@ -180,6 +187,29 @@ class BackupInteraction:
         if last_node == 6:
             return (8 if mobility else 7), mobility
         return next_node, mobility
+    
+    def send_status_to_c2(self):
+        data = {}
+        data["victim_id"] = self.victim_id
+
+        for key in self.victim_situation:
+            if self.victim_situation[key] != None:
+                data[key] = self.victim_situation[key]
+        
+        
+        status_report_msg = {
+            "header": {
+                "sender": "dialogManager",
+                "msg_id": str(uuid.uuid4()),
+                "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "msg_type": "Creation",
+                "msg_content": "victim/dialogmanager/report"},
+            "data": data
+            }
+        
+    
+        status_report_msg = json.dumps(status_report_msg)
+        self.dialog_client.publish("victim/dialogmanager/report", str(status_report_msg))
 
     def interact(self,node):
         if node == 7:
@@ -231,7 +261,9 @@ class BackupInteraction:
         elif node == 5:
             self.victim_situation["people_in_surroundings"] = ("Others present" if status == "positive" else "None nearby")
         elif node == 6:
-            self.victim_situation["immediate_danger"] = ("Danger nearby" if status == "positive" else "Not clear")    
+            self.victim_situation["immediate_danger"] = ("Danger nearby" if status == "positive" else "Not clear")
+
+        self.send_status_to_c2()    
         
         return status
 
@@ -330,6 +362,7 @@ class BackupInteraction:
         node = start_node
         if self.first_message:
             self.wait_for_first_message()
+
         while True:
             node, mobility = self.select_node(node, last_answer, mobility)
             last_answer = self.interact(node)

@@ -302,7 +302,6 @@ async def main():
     parser = setup_argument_parser()
     args = parser.parse_args()
 
-    json_object = None
 
     try:
         print("⚙️ Starting Backup and Rescue systems simultaneously...")

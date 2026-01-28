@@ -14,18 +14,22 @@ RUN apt-get update -o Acquire::Check-Valid-Until=false && apt-get install -y \
     libasound2-plugins \
     && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && apt-get install -y wget ca-certificates && rm -rf /var/lib/apt/lists/*    
+RUN apt-get update && apt-get install -y wget ca-certificates && rm -rf /var/lib/apt/lists/* 
+RUN apt-get update && apt-get install -y mosquitto mosquitto-clients
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 1. Install Piper TTS (Corrected Link)
-RUN wget https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_amd64.tar.gz && \
-    tar -xzf piper_amd64.tar.gz -C /usr/local/bin --strip-components=1 && \
-    rm piper_amd64.tar.gz
-
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then PIPER_ARCH="amd64"; \
+    elif [ "$ARCH" = "aarch64" ]; then PIPER_ARCH="arm64"; \
+    else echo "Unsupported architecture: $ARCH" && exit 1; fi && \
+    wget "https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_${PIPER_ARCH}.tar.gz" && \
+    tar -xzf "piper_${PIPER_ARCH}.tar.gz" -C /usr/local/bin --strip-components=1 && \
+    rm "piper_${PIPER_ARCH}.tar.gz"
+    
 # 2. Download high-quality models for Offline use (English, Spanish, French)
 RUN mkdir -p /models && \
     # English (Lessac Medium)
@@ -38,7 +42,7 @@ RUN mkdir -p /models && \
     wget -O /models/fr_FR-siwis-medium.onnx https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx && \
     wget -O /models/fr_FR-siwis-medium.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json
 
-# ... (Keep the rest of your Dockerfile) ...
+RUN mkdir -p /mosquitto/data /mosquitto/log /mosquitto/config
 
 # Pre-download Whisper model to avoid runtime permission issues
 RUN python -c "import whisper; whisper.load_model('base')"
@@ -53,11 +57,19 @@ COPY config/ ./config/
 COPY dialog_manager.py .
 COPY text2speech2text.py .
 COPY asound.conf /etc/asound.conf
+COPY ./config/mosquitto.conf /mosquitto/config/mosquitto.conf
 
 # Create cache directory with proper permissions for any runtime caching
 RUN echo 'pcm.!default { type pulse }' > /etc/asound.conf && \
     echo 'ctl.!default { type pulse }' >> /etc/asound.conf
 RUN mkdir -p /.cache && chmod -R 777 /.cache
+RUN chmod -R 777 /mosquitto
+
+#Coment this 3 lines for two image solution
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+# Chang
+CMD ["/entrypoint.sh"]
 
 
 # Set working directory

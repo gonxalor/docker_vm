@@ -155,6 +155,7 @@ class PhaseController:
 
         if not self.local:
             self.stt_queue = Queue()
+            self.id_queue = Queue()
             self.dialog_client = mqtt.Client()
             self.dialog_client.will_set("victim/dialogmanager2/lwt", "offline")
             self.dialog_client.on_connect = self.on_connect
@@ -169,7 +170,7 @@ class PhaseController:
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             print("✅ Connected to broker")
-            self.dialog_client.subscribe("victim/text2speech2text/stt")
+            self.dialog_client.subscribe("victim/controlcenter/victim_id")
             self.dialog_client.subscribe("victim/text2speech2text/lwt")            
             self.dialog_client.publish("victim/dialogmanager2/lwt", "online")
         else:
@@ -180,7 +181,13 @@ class PhaseController:
         if msg.payload.decode() != "":
             msg_topic = msg.topic
             if msg_topic == "victim/text2speech2text/lwt":
-                print(f"Text2speech2Text status update: {msg.payload.decode()}")        
+                print(f"Text2speech2Text status update: {msg.payload.decode()}")
+            elif msg_topic == "victim/controlcenter/victim_id":
+                loaded_msg = json.loads(msg.payload.decode())
+                data = loaded_msg["data"]
+                victim_id = data["victim_id"]
+                self.victim_id = victim_id
+                self.dialog_client.subscribe(f"victim/text2speech2text/stt-{self.victim_id}")            
             else:    
                 response = json.loads(msg.payload.decode())
                 data = response["data"]
@@ -191,7 +198,7 @@ class PhaseController:
 
                 if self.first_message:
                     self.first_message = False
-                    self.dialog_client.publish("victim/text2speech2text/stt", payload="", qos=1, retain=True)        
+                    self.dialog_client.publish(f"victim/text2speech2text/stt-{self.victim_id}", payload="", qos=1, retain=True)        
     
     def change_to_backup_system(self,victim_response):
         if self.loop is not None:
@@ -292,7 +299,7 @@ class PhaseController:
             "exit_reason": ""
         }
 
-        self.victim_id = self.wait_for_victim()
+        self.wait_for_victim()
         
         try:
             # Execute Phase 1 if starting fresh
@@ -361,7 +368,7 @@ class PhaseController:
                     "msg_id": str(uuid.uuid4()),
                     "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "msg_type": "UGV's message",
-                    "msg_content": "victim/text2speech2text/tts"},
+                    "msg_content": f"victim/text2speech2text/tts-{self.victim_id}"},
             "data":{
                 "message": question,
                 "victim_id": self.victim_id,
@@ -371,7 +378,7 @@ class PhaseController:
         json_msg["data"]["last_message"] = False
         json_msg = json.dumps(json_msg)
 
-        self.dialog_client.publish("victim/text2speech2text/tts",str(json_msg))   
+        self.dialog_client.publish(f"victim/text2speech2text/tts-{self.victim_id}",str(json_msg))   
     
     def execute_phase_1(self, max_turns: int = 15) -> Dict:
         """
@@ -442,6 +449,24 @@ class PhaseController:
             
             if assessment_updates == False:
                 return "LLM FAIL"
+            
+            topic = "victim/dialogmanager/report"
+            data = self.assessment_agent.get_assessment()
+            data["victim_id"] = self.victim_id
+            status_report_msg = {
+                "header": {
+                    "sender": "dialogManager",
+                    "msg_id": str(uuid.uuid4()),
+                    "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "msg_type": "Creation",
+                    "msg_content": topic},
+                "data": data
+                }
+
+            json_msg = json.dumps(status_report_msg)
+
+            result = self.dialog_client.publish(topic, json_msg, retain=True)
+            result.wait_for_publish()   # ✅ wait until actually sent
             
             if self.loop is not None:
                 self.loop.call_soon_threadsafe(
@@ -610,7 +635,7 @@ class PhaseController:
         print("Waiting for victim...")
         data = self.stt_queue.get()
         print("Victim Found -> ", data["victim_id"])
-        return data["victim_id"]
+        
     
     def _get_victim_response(self, robot_question: str) -> str:
         """Get victim response (from VictimAgent or real interaction)"""
@@ -644,7 +669,7 @@ class PhaseController:
                                     "msg_id": str(uuid.uuid4()),
                                     "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                                     "msg_type": "UGV's message",
-                                    "msg_content": "victim/text2speech2text/tts"},
+                                    "msg_content": f"victim/text2speech2text/tts-{self.victim_id}"},
                             "data":{
                                 "message": retry_message,
                                 "victim_id": self.victim_id,
@@ -653,7 +678,7 @@ class PhaseController:
                         }
                         json_msg = json.dumps(json_msg)
 
-                        self.dialog_client.publish("victim/text2speech2text/tts",str(json_msg))
+                        self.dialog_client.publish(f"victim/text2speech2text/tts-{self.victim_id}",str(json_msg))
                         time.sleep(1)
                             
             # Production mode - would get from audio/text input

@@ -18,10 +18,13 @@ done
 echo "Ollama server is ready!"
 
 # Pull the gemma2:2b model (change to your preferred model)
-echo "Pulling llama3.1:8b model..."
-ollama pull llama3.1:8b
+#echo "Pulling llama3.1:8b model..."
+echo "Pulling gemma3:12b model..."
+#ollama pull llama3.1:8b
+ollama pull gemma3:12b
 
 echo "Model downloaded successfully!"
+ollama list
 
 # Keep container running by waiting for the ollama serve process
 wait

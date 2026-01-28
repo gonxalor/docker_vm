@@ -1,0 +1,57 @@
+This guide will help you install Docker, import the dialog-manager image, and start the system with full audio and MQTT support.
+Step 1: Install Docker (If not already installed)
+
+Open a terminal and run the following commands to install the Docker Engine and the Compose plugin:
+Bash
+
+# Update your package list
+sudo apt-get update
+
+# Install Docker and Compose
+sudo apt-get install -y docker.io docker-compose-v2
+
+# Allow your user to run Docker without 'sudo'
+sudo usermod -aG docker $USER
+
+# IMPORTANT: You must Log Out and Log Back In for the group change to take effect.
+
+Step 2: Load the Image File
+
+Locate the dialog-manager.tar.gz file you received. In your terminal, navigate to that folder and run:
+Bash
+
+# This imports the image into your local Docker library
+docker load -i dialog-manager.tar.gz
+
+# Verify it worked (you should see 'dialog-dialog-manager' in the list)
+docker images
+
+Step 3: Setup Audio Permissions (Host Machine)
+
+Since the container needs to use your microphone and speakers, you must ensure your PulseAudio server is ready to accept the connection:
+Bash
+
+# Ensure the PulseAudio socket is active
+pactl load-module module-native-protocol-unix socket=/run/user/$(id -u)/pulse/native
+
+Step 4: Run the System
+
+You have two options to start the container. Option A is recommended.
+
+Option A: Using Docker Compose (Best) Ensure the docker-compose.yaml file is in the same folder as your models. Run:
+Bash
+
+docker compose up
+
+Option B: Using Docker Run (Manual) If you don't want to use the Compose file, run this single command:
+Bash
+
+docker run -it --rm \
+  --name tts_client \
+  --net=app-network \
+  -e MQTT_BROKER=localhost \
+  -e PULSE_SERVER=unix:/run/user/1000/pulse/native \
+  -v /run/user/1000/pulse/native:/run/user/1000/pulse/native \
+  -v ~/.config/pulse/cookie:/tmp/pulse-cookie \
+  --user 1000 \
+  dialog-dialog-manager:latest

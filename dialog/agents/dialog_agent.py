@@ -130,6 +130,10 @@ class DialogueAgent:
         Returns:
             Opening message adapted to empathy level
         """
+
+        print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+        print(f"THIS IS THE MODEL NAME: {self.model_name}")
+        print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
         if self.language == 'en':
             greetings = {
                 "low": "Hello. Are you injured?",
