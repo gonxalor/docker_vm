@@ -30,7 +30,6 @@ class MqttClient():
 
     def __init__(self):
         self.cc_queue = Queue()
-        print("Why no print?")
         self.dm_client = mqtt.Client()
         self.dm_client.will_set("victim/dialogmanager/lwt", "offline")
         self.dm_client.on_connect = self.on_connect
