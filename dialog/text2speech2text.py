@@ -18,8 +18,6 @@ PORT = int(os.getenv('MQTT_PORT', 1883))
 USERNAME = os.getenv('USERNAME', 'inesc')
 PASSWORD = os.getenv('PASSWORD', 'inesc')
 
-print("Loading Whisper model...")
-model = whisper.load_model("base")
 
 def transcribe_wav_file(file_path):
     # 2. Define the path to your WAV file
@@ -60,12 +58,14 @@ def parse_args():
 
 # ------------------ Queues ------------------ #
 tts_queue = queue.Queue()
+victim_id_queue = queue.Queue()
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("✅ Connected to broker")
         # Subscribe to TTS topic
         speech_client.subscribe(f"victim/text2speech2text/tts-{userdata}")
+        speech_client.subscribe(f"dialogmanager/victim_id/{userdata}")
         speech_client.subscribe("victim/dialogmanager2/lwt")
         speech_client.publish("victim/text2speech2text/lwt", "online")    
     else:
@@ -77,6 +77,12 @@ def on_tts_message(client, userdata, msg):
     msg_topic = msg.topic
     if msg_topic == "victim/dialogmanager2/lwt":
         print(f"Dialog Manager status update: {msg.payload.decode()}")
+    elif msg_topic == f"dialogmanager/victim_id/{userdata}":
+        loaded_msg = json.loads(msg.payload.decode())
+        data = loaded_msg["data"]
+        victim_id = data["victim_id"]
+        victim_id_queue.put(victim_id)
+        print("victim_id: ", victim_id)
     else:
         try:
             loaded_msg = json.loads(msg.payload.decode())
@@ -87,6 +93,55 @@ def on_tts_message(client, userdata, msg):
         except Exception as e:
             print(f"Error in MQTT callback: {e}")
 
+def wait_for_help(audio_manager,speech_client,robotname):
+    while True:
+        # After speaking, record speech from user
+        if language == "en":
+            keyword = "help"
+        elif language == "es":
+            keyword = "ayuda"
+        elif language == "fr":
+            keyword = "bonjour"    
+                
+        new_msg = audio_manager.speech_to_text(max_duration=8)
+        if keyword in new_msg.lower():
+            # Prepare JSON message and publish STT result
+            victim_id = str(uuid.uuid4())
+            json_msg = {
+                "header": {
+                    "sender": "speechModule",
+                    "msg_id": str(uuid.uuid4()),
+                    "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "msg_type": "Victim's message",
+                    "msg_content": f"victim/text2speech2text/stt-{robotname}"
+                },
+                "data": {
+                    "victim_id": victim_id,
+                    "message": new_msg,
+                }
+            }
+            speech_client.publish(f"victim/text2speech2text/stt-{robotname}", json.dumps(json_msg), retain=True)
+            print(f"\nVICTIM: {new_msg}")
+            break
+
+def wait_for_c2():
+    print("waiting for victim_id from the C2")
+    victim_id = victim_id_queue.get()
+    json_msg = {
+                "header": {
+                    "sender": "speechModule",
+                    "msg_id": str(uuid.uuid4()),
+                    "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "msg_type": "Victim's message",
+                    "msg_content": f"victim/text2speech2text/stt-{robotname}"
+                },
+                "data": {
+                    "victim_id": victim_id,
+                    "message": "Help",
+                }
+    }
+    speech_client.publish(f"victim/text2speech2text/stt-{robotname}", json.dumps(json_msg), retain=True)
+    return victim_id
 
 # ------------------ MAIN SCRIPT ------------------ #
 if __name__ == "__main__":
@@ -97,7 +152,7 @@ if __name__ == "__main__":
     print(f"[Speech Module] Using Whisper model: {whisper_model}")
 
     # Initialize AudioManager (loads Whisper model, configures TTS & recording)
-    audio_manager = AudioManager(whisper_model=whisper_model,language=language)
+    audio_manager = AudioManager(whisper_model=whisper_model,language=language,local=False)
 
     # Initialize MQTT client
     speech_client = mqtt.Client(userdata=robotname)
@@ -108,21 +163,28 @@ if __name__ == "__main__":
     speech_client.connect(BROKER, PORT)
     speech_client.loop_start()
 
+    
+    #wait_for_help(audio_manager,speech_client,robotname)
+    print("-----------------------:", robotname)
+    victim_id = wait_for_c2()
+    print("Its not waiting")
+    n = 0
     while True:
-        # ------------------ MAIN LOOP ------------------ #
-        while True:
-            # After speaking, record speech from user
-            if language == "en":
-                keyword = "help"
-            elif language == "es":
-                keyword = "ayuda"
-            elif language == "fr":
-                keyword = "bonjour"    
-                 
-            new_msg = audio_manager.speech_to_text(max_duration=8)
-            if keyword in new_msg.lower():
+        try:
+            # Check if there is a new TTS message
+            data = tts_queue.get_nowait()
+            tts_text = data["message"]
+            last_message = data["last_message"]
+            
+            # Speak the message (blocking is OK in main thread)
+            audio_manager.text_to_speech(tts_text, blocking=True)
+
+            print("THIS IS THE ROBOTNAME: ", robotname)
+            if not last_message:
+                # After speaking, record speech from user
+
+                new_msg = audio_manager.speech_to_text(max_duration=8)
                 # Prepare JSON message and publish STT result
-                victim_id = str(uuid.uuid4())
                 json_msg = {
                     "header": {
                         "sender": "speechModule",
@@ -133,55 +195,18 @@ if __name__ == "__main__":
                     },
                     "data": {
                         "victim_id": victim_id,
-                        "message": new_msg,
+                        "message": new_msg
+                        
+
                     }
                 }
-                speech_client.publish(f"victim/text2speech2text/stt-{robotname}", json.dumps(json_msg), retain=True)
+                speech_client.publish(f"victim/text2speech2text/stt-{robotname}", json.dumps(json_msg))
                 print(f"\nVICTIM: {new_msg}")
-                break
-        
-        n = 0
-        while True:
-            try:
-                # Check if there is a new TTS message
-                data = tts_queue.get_nowait()
-                tts_text = data["message"]
-                last_message = data["last_message"]
-                
-                # Speak the message (blocking is OK in main thread)
-                audio_manager.text_to_speech(tts_text, blocking=True)
+            else:
+                break    
 
-                print("THIS IS THE ROBOTNAME: ", robotname)
-                if not last_message:
-                    # After speaking, record speech from user
-
-                    new_msg = audio_manager.speech_to_text(max_duration=8)
-                    #file_path = f"Fr_adulte_chunks/chunk_00{n}.wav"
-                    #n += 1
-                    #new_msg = transcribe_wav_file(file_path)
-                    # Prepare JSON message and publish STT result
-                    json_msg = {
-                        "header": {
-                            "sender": "speechModule",
-                            "msg_id": str(uuid.uuid4()),
-                            "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                            "msg_type": "Victim's message",
-                            "msg_content": f"victim/text2speech2text/stt-{robotname}"
-                        },
-                        "data": {
-                            "victim_id": victim_id,
-                            "message": new_msg
-                            
-
-                        }
-                    }
-                    speech_client.publish(f"victim/text2speech2text/stt-{robotname}", json.dumps(json_msg))
-                    print(f"\nVICTIM: {new_msg}")
-                else:
-                    break    
-
-            except queue.Empty:
-                # No TTS messages pending, just sleep briefly
-                time.sleep(0.1)
-            except Exception as e:
-                print(f"Error in main loop: {e}")
+        except queue.Empty:
+            # No TTS messages pending, just sleep briefly
+            time.sleep(0.1)
+        except Exception as e:
+            print(f"Error in main loop: {e}")

@@ -13,8 +13,8 @@ PASSWORD = os.getenv('PASSWORD', 'inesc')
 
 
 class Mqtt_client:
-    def __init__(self):
-        self.cc_client = mqtt.Client()
+    def __init__(self,userdata):
+        self.cc_client = mqtt.Client(userdata=userdata)
         self.cc_client.will_set("victim/controlcenter/lwt", "offline")
         self.cc_client.on_connect = self.on_connect
         self.cc_client.on_message = self.on_message
@@ -24,9 +24,9 @@ class Mqtt_client:
     def on_connect(self,client, userdata, flags, rc):
         if rc == 0:
             print("✅ Connected to broker")
-            client.subscribe("victim/dialogmanager/report")
+            client.subscribe(f"dialogmanager/ugv/{userdata}")
             client.subscribe("victim/dialogmanager/lwt")
-            print("Subscribed to victim/dialogmanager/report")
+            print(f"Subscribed to dialogmanager/ugv/{userdata}")
             client.publish("victim/controlcenter/lwt", "online")
         else:
             print("❌ Bad connection. Returned code=", rc)
@@ -69,29 +69,27 @@ class Mqtt_client:
                 except Exception as e:
                     print("Error parsing message:", e, msg.payload)
 
-def send_context(cc_client):
+def send_context(cc_client,robotname):
     # 🔹 Dialog Manager is asking for empathy level
-    context = situationType[0]
+    print("Im about to send the victim_id")
     cc_client.waiting_for_message = True
-
+    victim_id = str(uuid.uuid4())
     new_msg = {
         "header": {
             "sender": "Crimson",
             "msg_id": str(uuid.uuid4()),
             "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "msg_type": "creation",
-            "msg_content": "victim/dialogmanager/request"
+            "msg_content": f"dialogmanager/victim_id/{robotname}"
         },
         "data": {
-            "uuid": "Chatbot",
-            "ugv_id": str(uuid.uuid4()),
-            "context": context,
+            "victim_id": victim_id
         }
     }
 
     json_msg = json.dumps(new_msg)
-    cc_client.cc_client.publish("victim/dialogmanager/request", json_msg, retain=True)
-    print("Context sent:", context)
+    cc_client.cc_client.publish(f"dialogmanager/victim_id/{robotname}", json_msg, retain=True)
+    print("Victim_id created:", victim_id)
     cc_client.cc_client.loop_start()
 
     while True:
@@ -99,8 +97,8 @@ def send_context(cc_client):
 
 if __name__ == "__main__":
 
-    cc_client = Mqtt_client()
+    robotname = input("Name of the ugv: ")
 
-    situationType = ["ImminentCollapse","FireClosingBy","NoImmediateDanger"]
+    cc_client = Mqtt_client(userdata=robotname)
 
-    send_context(cc_client)
+    send_context(cc_client,robotname)

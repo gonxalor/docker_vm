@@ -15,20 +15,25 @@ services:
       - PASSWORD=inesc
       - PULSE_SERVER=unix:/run/user/1000/pulse/native
       - XDG_CACHE_HOME=/home/user/.cache
+      - DIALOG_PARAMS=-rn ANIMAL
+      - TTS_PARAMS=-rn ANIMAL
     volumes:
       # Audio/Pulse Volumes
       - /run/user/1000/pulse/native:/run/user/1000/pulse/native
       - ${HOME}/.config/pulse/cookie:/tmp/pulse-cookie
-      # Whisper Cache Bind Mount (To prevent re-downloading)
-      - ./whisper_models:/home/user/.cache/whisper
       # Mosquitto Persistence (Moved from the old service)
       - mosquitto-data:/mosquitto/data
       - mosquitto-log:/mosquitto/log
       - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
     user: "1000"
+    extra_hosts:
+      - "media01.carma:172.31.16.10"
+    #network_mode: "host"  
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     networks:
       - app-network
-
 volumes:
   mosquitto-data:
   mosquitto-log:

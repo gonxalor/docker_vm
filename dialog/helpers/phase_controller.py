@@ -445,7 +445,7 @@ class PhaseController:
             if assessment_updates == False:
                 return "LLM FAIL"
             
-            topic = "victim/dialogmanager/report"
+            topic = f"dialogmanager/ugv/{self.robotname}"
             data = self.assessment_agent.get_assessment()
             data["victim_id"] = self.victim_id
             status_report_msg = {

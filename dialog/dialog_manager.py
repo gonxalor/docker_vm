@@ -203,8 +203,8 @@ def handle_system_error(error: Exception, context: str = ""):
     print("  • Ensure all Python dependencies are installed")
     print("  • Check firewall settings for Ollama port 11434")
 
-def send_status_report(mqtt_client,msg):
-    topic = "victim/dialogmanager/report"
+def send_status_report(mqtt_client,msg,robotname):
+    topic = f"dialogmanager/ugv/{robotname}"
     data = msg
     data["victim_id"] = mqtt_client.victim_id
     status_report_msg = {
@@ -227,7 +227,7 @@ async def run_backup_interaction(mqtt_client,report_queue,language,robotname):
     try:
         robot_system = BackupInteraction(robotname,language=language)
         mqtt_client.victim_id = await robot_system.interaction_tree(queue=report_queue)
-        send_status_report(mqtt_client, robot_system.victim_situation)
+        send_status_report(mqtt_client, robot_system.victim_situation,robotname)
         await asyncio.sleep(0.5)
         robot_system.dialog_client.disconnect()
     except Exception as e:
@@ -285,7 +285,7 @@ async def run_rescue_robot(mqtt_client, args, context,report_queue,loop,cancel_e
     print("RESCUE OPERATION COMPLETED")
     print("="*50)
     print("\nFINAL ASSESSMENT SUMMARY:")
-    send_status_report(mqtt_client, final_assessment)
+    send_status_report(mqtt_client, final_assessment,config.conversation_config.robot_name)
     await asyncio.sleep(0.5) 
     print(f"\nTRIAGE PRIORITY: {triage_priority}")
     print("\nSystem shutdown successful")

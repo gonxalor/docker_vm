@@ -198,13 +198,13 @@ class BackupInteraction:
                 "msg_id": str(uuid.uuid4()),
                 "utc_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "msg_type": "Creation",
-                "msg_content": "victim/dialogmanager/report"},
+                "msg_content": f"dialogmanager/ugv/{self.robotname}"},
             "data": data
             }
         
     
         status_report_msg = json.dumps(status_report_msg)
-        self.dialog_client.publish("victim/dialogmanager/report", str(status_report_msg))
+        self.dialog_client.publish(f"dialogmanager/ugv/{self.robotname}", str(status_report_msg))
 
     def interact(self,node):
         if node == 7:

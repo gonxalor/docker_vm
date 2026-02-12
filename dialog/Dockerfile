@@ -1,7 +1,7 @@
 FROM python:3.12.0
 
 # Install system dependencies including espeak-ng, audio libraries, and PulseAudio
-RUN apt-get update -o Acquire::Check-Valid-Until=false && apt-get install -y \
+RUN apt-get update && apt-get install -y \
     gcc \
     espeak-ng \
     espeak-ng-data \
@@ -12,6 +12,11 @@ RUN apt-get update -o Acquire::Check-Valid-Until=false && apt-get install -y \
     libpulse0 \
     libpulse-dev \
     libasound2-plugins \
+    wget \
+    ca-certificates \
+    ffmpeg \
+    mosquitto \
+    mosquitto-clients \
     && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y wget ca-certificates && rm -rf /var/lib/apt/lists/* 
@@ -45,7 +50,15 @@ RUN mkdir -p /models && \
 RUN mkdir -p /mosquitto/data /mosquitto/log /mosquitto/config
 
 # Pre-download Whisper model to avoid runtime permission issues
-RUN python -c "import whisper; whisper.load_model('base')"
+# Define a permanent location for models
+ENV WHISPER_CACHE_DIR=/models/whisper
+RUN mkdir -p $WHISPER_CACHE_DIR
+
+# Download the model to that specific directory
+RUN python -c "import whisper; whisper.load_model('base', download_root='/models/whisper')"
+
+# Ensure permissions are open if you run as user 1000
+RUN chmod -R 777 /models/whisper
 
 # Copy all project files and directories
 COPY agents/ ./agents/

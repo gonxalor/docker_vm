@@ -9,13 +9,15 @@ import platform
 import pyttsx3
 import threading
 import torch
+import shlex
+import time
 import subprocess
 
 
 class AudioManager:
     """Manages audio recording, speech-to-text, and text-to-speech functionality"""
     
-    def __init__(self, empathy_level: str = "medium", whisper_model: str = "base", language: str = "en"):
+    def __init__(self, empathy_level: str = "medium", whisper_model: str = "base", language: str = "en",local: bool = True):
         """
         Initialize audio manager with offline capabilities.
         
@@ -25,12 +27,24 @@ class AudioManager:
         """
         self.empathy_level = empathy_level
         self.language = language
+        self.local = local
+        
+        #self.microphone = "http://media01.carma:8889/ugv/a31de2dd-0adc-48d1-b562-9715ae7b633e/mic"
+        #self.speaker = "http://media01.carma:8889/ugv/a31de2dd-0adc-48d1-b562-9715ae7b633e/speaker"
+        
+        #Optional links, just testing
+        self.microphone = "rtsp://media01.carma:8554/ugv/a31de2dd-0adc-48d1-b562-9715ae7b633e/mic"
+        self.speaker = "rtsp://media01.carma:8554/ugv/a31de2dd-0adc-48d1-b562-9715ae7b633e/speaker"
+
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         
         # Load Whisper model
         print(f"Loading Whisper model '{whisper_model}' on {device.upper()} for offline speech recognition...")
-        self.whisper_model = whisper.load_model(whisper_model, device=device)
+        if self.local:
+            self.whisper_model = whisper.load_model(whisper_model, device=device)
+        else:
+            self.whisper_model = whisper.load_model(whisper_model,download_root="/models/whisper", device=device)
         print("Whisper model loaded successfully")
         
         # Initialize text-to-speech
@@ -109,75 +123,114 @@ class AudioManager:
         """
         print("Recording audio... (speak now)")
         
-        stream = self.audio.open(
-            format=self.audio_format,
-            channels=self.channels,
-            rate=self.sample_rate,
-            input=True,
-            frames_per_buffer=self.chunk_size
-        )
+        if self.local:
+            stream = self.audio.open(
+                format=self.audio_format,
+                channels=self.channels,
+                rate=self.sample_rate,
+                input=True,
+                frames_per_buffer=self.chunk_size
+            )
+            
+            frames = []
+            silence_frames = 0
+            silence_threshold_frames = int(silence_duration * self.sample_rate / self.chunk_size)
+            max_frames = int(duration * self.sample_rate / self.chunk_size)
         
-        frames = []
-        silence_frames = 0
-        silence_threshold_frames = int(silence_duration * self.sample_rate / self.chunk_size)
-        max_frames = int(duration * self.sample_rate / self.chunk_size)
         
-        try:
-            for i in range(max_frames):
-                try:
-                    data = stream.read(self.chunk_size, exception_on_overflow=False)
-                    frames.append(data)
-                    
-                    audio_data = np.frombuffer(data, dtype=np.int16)
-                    
-                    if len(audio_data) == 0:
-                        rms = 0.0
-                    else:
-                        audio_float = audio_data.astype(np.float32)
-                        mean_square = np.mean(np.square(audio_float))
+            try:
+                for i in range(max_frames):
+                    try:
+                        data = stream.read(self.chunk_size, exception_on_overflow=False)
+                        frames.append(data)
                         
-                        rms = np.sqrt(mean_square) if np.isfinite(mean_square) and mean_square >= 0 else 0.0
-                        rms = rms / 32767.0
-                    
-                    if rms < silence_threshold:
-                        silence_frames += 1
-                        if silence_frames >= silence_threshold_frames and len(frames) > 10:
-                            print("Silence detected, stopping recording")
-                            break
-                    else:
-                        silence_frames = 0
+                        audio_data = np.frombuffer(data, dtype=np.int16)
                         
-                except Exception as chunk_error:
-                    print(f"WARNING: Audio chunk error: {chunk_error}")
-                    continue
-                    
-        except Exception as e:
-            print(f"WARNING: Recording error: {e}")
-        finally:
-            stream.stop_stream()
-            stream.close()
-        
-        if not frames:
-            print("No audio data recorded")
-            return np.array([])
-        
-        try:
-            audio_data = b''.join(frames)
-            if len(audio_data) == 0:
+                        if len(audio_data) == 0:
+                            rms = 0.0
+                        else:
+                            audio_float = audio_data.astype(np.float32)
+                            mean_square = np.mean(np.square(audio_float))
+                            
+                            rms = np.sqrt(mean_square) if np.isfinite(mean_square) and mean_square >= 0 else 0.0
+                            rms = rms / 32767.0
+                        
+                        if rms < silence_threshold:
+                            silence_frames += 1
+                            if silence_frames >= silence_threshold_frames and len(frames) > 10:
+                                print("Silence detected, stopping recording")
+                                break
+                        else:
+                            silence_frames = 0
+                            
+                    except Exception as chunk_error:
+                        print(f"WARNING: Audio chunk error: {chunk_error}")
+                        continue
+                        
+            except Exception as e:
+                print(f"WARNING: Recording error: {e}")
+            finally:
+                stream.stop_stream()
+                stream.close()
+            
+            if not frames:
+                print("No audio data recorded")
                 return np.array([])
+            
+            try:
+                audio_data = b''.join(frames)
+                if len(audio_data) == 0:
+                    return np.array([])
+                    
+                audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
                 
-            audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
-            
-            if not np.isfinite(audio_np).all():
-                print("WARNING: Audio contains invalid values, cleaning...")
-                audio_np = np.nan_to_num(audio_np, nan=0.0, posinf=0.0, neginf=0.0)
+                if not np.isfinite(audio_np).all():
+                    print("WARNING: Audio contains invalid values, cleaning...")
+                    audio_np = np.nan_to_num(audio_np, nan=0.0, posinf=0.0, neginf=0.0)
 
-            print(f"Recorded {len(audio_np)/self.sample_rate:.1f} seconds of audio")
-            return audio_np
-            
-        except Exception as conversion_error:
-            print(f"Audio conversion error: {conversion_error}")
-            return np.array([])
+                print(f"Recorded {len(audio_np)/self.sample_rate:.1f} seconds of audio")
+                return audio_np
+                
+            except Exception as conversion_error:
+                print(f"Audio conversion error: {conversion_error}")
+                return np.array([])
+        else:
+            print(f"Connecting to stream: {self.microphone}")
+        
+            command = [
+                'ffmpeg',
+                '-nostdin',                 # Prevents FFmpeg from trying to read terminal input
+                '-rtsp_transport', 'tcp', 
+                '-i', self.microphone,      # Use the direct IP URL
+                '-t', str(duration),
+                '-f', 's16le',
+                '-acodec', 'pcm_s16le',
+                '-ar', '16000',
+                '-ac', '1',
+                '-'
+            ]
+                        
+            try:
+                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                raw_audio, error = process.communicate()
+                
+                #if process.returncode != 0:
+                 #   print(f"STREAM ERROR: Could not connect to {self.microphone}")
+                  #  print(f"FFmpeg says: {error.decode()}")
+                   # return np.array([])
+                
+                if not raw_audio:
+                    print(f"STDOUT: {raw_audio}")
+                    print(f"STREAM ERROR: Could not connect to {self.microphone}")
+                    return np.array([])
+
+                # Convert to numpy for Whisper
+                print("No problem what so ever")
+                audio_np = np.frombuffer(raw_audio, dtype=np.int16).astype(np.float32) / 32768.0
+                return audio_np
+            except Exception as e:
+                print(f"Streaming record error: {e}")
+                return np.array([])   
     
     def whisper_speech_to_text(self, audio_data: np.ndarray, language: str = "en") -> str:
         """
@@ -243,6 +296,21 @@ class AudioManager:
         print("Whisper failed after retries")
         return ""
     
+    def _get_persistent_ffmpeg(self):
+        """Checks if the RTSP stream is alive; if not, starts it."""
+        if not hasattr(self, 'rtsp_process') or self.rtsp_process.poll() is not None:
+            print(f"Opening persistent stream to {self.speaker}...")
+            # We use pipe:0 (stdin) so we can push audio data manually
+            command = [
+                'ffmpeg', '-loglevel', 'error', '-re',
+                '-f', 's16le', '-ar', '22050', '-ac', '1', '-i', 'pipe:0',
+                '-rtsp_transport', 'tcp',
+                '-c:a', 'libopus', '-b:a', '32k', '-application', 'lowdelay',
+                '-f', 'rtsp', self.speaker
+            ]
+            self.rtsp_process = subprocess.Popen(command, stdin=subprocess.PIPE)
+        return self.rtsp_process
+    
     def text_to_speech(self, text: str, blocking: bool = True):
         # Ensure text is not empty
         if not text or not text.strip():
@@ -257,22 +325,52 @@ class AudioManager:
         
         model_file = voice_map.get(self.language, "en_US-lessac-medium.onnx")
         model_path = f"/models/{model_file}"
-        
-        # We use aplay to play the raw audio stream coming out of Piper
-        # -r 22050 is required for 'medium' models.
-        # Note: Using double quotes around text to handle single quotes in speech
         safe_text = text.replace('"', '\\"')
-        command = f'echo "{safe_text}" | piper --model {model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
         
-        try:
-            if blocking:
-                subprocess.run(command, shell=True, check=True)
-            else:
-                subprocess.Popen(command, shell=True)
-        except Exception as e:
-            print(f"Offline TTS Error: {e}")
-            print(f"Robot says: {text}")
+        if self.local:
+            # We use aplay to play the raw audio stream coming out of Piper
+            # -r 22050 is required for 'medium' models.
+            # Note: Using double quotes around text to handle single quotes in speech
+            command = f'echo "{safe_text}" | piper --model {model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
+            command = (
+            f'echo {safe_text} | piper --model {model_path} --output-raw | '
+            f'ffmpeg -f s16le -ar 22050 -ac 1 -i - '
+            f'-c:a libopus -b:a 32k -application lowdelay '  # <--- Add Opus encoding
+            f'-f rtsp {self.speaker}' 
+            )
+            try:
+                if blocking:
+                    subprocess.run(command, shell=True, check=True)
+                else:
+                    subprocess.Popen(command, shell=True)
+            except Exception as e:
+                print(f"Offline TTS Error: {e}")
+                print(f"Robot says: {text}")
+        else:
+            try:
+                piper_proc = subprocess.Popen(
+                    ['piper', '--model', model_path, '--output-raw'],
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+                audio_bytes, _ = piper_proc.communicate(input=text.encode('utf-8'))
 
+                if audio_bytes:
+                    # 2. Get our long-running ffmpeg process
+                    rtsp_pipe = self._get_persistent_ffmpeg()
+                    
+                    # 3. Write the bytes to the server stream
+                    rtsp_pipe.stdin.write(audio_bytes)
+                    rtsp_pipe.stdin.flush()
+                    
+                    print(f"Sent {len(audio_bytes)} bytes to RTSP stream.")
+
+                    
+                    # Approximate duration (2 bytes per sample @ 22050Hz)
+                    duration = (len(audio_bytes) / 2) / 22050
+                    time.sleep(duration)
+
+            except Exception as e:
+                print(f"TTS Error: {e}")
             
     def test_audio_systems(self):
         """Test both TTS and STT systems offline"""
